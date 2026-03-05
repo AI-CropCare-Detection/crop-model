@@ -1,0 +1,11 @@
+path,pred,conf
+C:\Users\Abedy\Downloads\Plant_Disease\Plant_Disease_Dataset\train\Grape___Leaf_blight_(Isariopsis_Leaf_Spot)\78ea2cf6-88fd-4d5b-af33-812777755230___FAM_L.Blight 1423.JPG,Grape___Leaf_blight_(Isariopsis_Leaf_Spot),0.978416919708252
+C:\Users\Abedy\Downloads\Plant_Disease\Plant_Disease_Dataset\train\Squash___Powdery_mildew\18ddfc71-1d5b-43f2-937e-2e6c1e3bc8d4___UMD_Powd.M 0212.JPG,Squash___Powdery_mildew,0.8648462891578674
+C:\Users\Abedy\Downloads\Plant_Disease\Plant_Disease_Dataset\train\Tomato___Spider_mites Two-spotted_spider_mite\1e09bb35-ef0d-4efb-b3eb-320a976a5e13___Com.G_SpM_FL 1529.JPG,Tomato___Spider_mites Two-spotted_spider_mite,0.9817869663238525
+C:\Users\Abedy\Downloads\Plant_Disease\Plant_Disease_Dataset\train\Corn_(maize)___Northern_Leaf_Blight\fc1c72a4-1aff-4ebf-83ed-909a7b9dc382___RS_NLB  4670_180deg.JPG,Corn_(maize)___Northern_Leaf_Blight,0.9411065578460693
+C:\Users\Abedy\Downloads\Plant_Disease\Plant_Disease_Dataset\train\Grape___Black_rot\4ed51751-01c2-4b59-8b10-1e8005d2e421___FAM_B.Rot 3467.JPG,Grape___Black_rot,0.833768367767334
+C:\Users\Abedy\Downloads\Plant_Disease\Plant_Disease_Dataset\train\Grape___Leaf_blight_(Isariopsis_Leaf_Spot)\2f73565e-e350-4d3c-b474-a19eab2f6639___FAM_L.Blight 4632_flipLR.JPG,Grape___Leaf_blight_(Isariopsis_Leaf_Spot),0.9265894293785095
+C:\Users\Abedy\Downloads\Plant_Disease\Plant_Disease_Dataset\train\Corn_(maize)___Common_rust_\RS_Rust 1622.JPG,Corn_(maize)___Common_rust_,0.6118350028991699
+C:\Users\Abedy\Downloads\Plant_Disease\Plant_Disease_Dataset\train\Tomato___healthy\48e28bd8-2395-4541-a64c-fd6fab030f06___GH_HL Leaf 352.1.JPG,Tomato___healthy,0.9573067426681519
+C:\Users\Abedy\Downloads\Plant_Disease\Plant_Disease_Dataset\train\Tomato___Tomato_mosaic_virus\7d688270-b9e9-41fb-a22a-6af2f6285b46___PSU_CG 2091.JPG,Tomato___Tomato_mosaic_virus,0.9640268683433533
+C:\Users\Abedy\Downloads\Plant_Disease\Plant_Disease_Dataset\train\Strawberry___healthy\db14ea51-547d-4e87-a7c4-f6e1a57c35c2___RS_HL 4502_90deg.JPG,Strawberry___healthy,0.9727195501327515
