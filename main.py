@@ -63,12 +63,9 @@ def load_model():
         file_size = torchscript_path.stat().st_size
         size_mb = file_size / (1024 * 1024)
         
-        # Check if file is a git-lfs pointer (very small text file)
-        if file_size < 500:  # Git-lfs pointers are ~130 bytes
-            logger.warning(f"[WARN] TorchScript appears to be git-lfs pointer (only {file_size} bytes)")
-            logger.warning(f"[WARN] Run: git lfs pull --include='checkpoints/*.pt' in your repo")
-        elif file_size < 1_000_000:  # Less than 1MB = corrupted/empty
-            logger.warning(f"[WARN] TorchScript file seems corrupt or empty ({size_mb:.2f}MB)")
+        # Check if file is valid (should be 100+ MB)
+        if file_size < 1_000_000:  # Less than 1MB = corrupted/download failed
+            logger.warning(f"[WARN] TorchScript file too small ({size_mb:.2f}MB) - download may have failed")
         else:
             try:
                 logger.info(f"[LOAD] Loading TorchScript model from: {torchscript_path} ({size_mb:.1f}MB)")
@@ -86,12 +83,9 @@ def load_model():
         file_size = checkpoint_path.stat().st_size
         size_mb = file_size / (1024 * 1024)
         
-        # Check if file is a git-lfs pointer (very small text file)
-        if file_size < 500:  # Git-lfs pointers are ~130 bytes
-            logger.warning(f"[WARN] Checkpoint appears to be git-lfs pointer (only {file_size} bytes)")
-            logger.warning(f"[WARN] Run: git lfs pull --include='checkpoints/*.pt' in your repo")
-        elif file_size < 1_000_000:  # Less than 1MB = corrupted/empty
-            logger.error(f"[ERROR] Checkpoint file seems corrupt or empty ({size_mb:.2f}MB)")
+        # Check if file is valid (should be 300+ MB)
+        if file_size < 1_000_000:  # Less than 1MB = corrupted/download failed
+            logger.error(f"[ERROR] Checkpoint file too small ({size_mb:.2f}MB) - download may have failed")
         else:
             try:
                 logger.info(f"[LOAD] Loading checkpoint from: {checkpoint_path} ({size_mb:.1f}MB)")
@@ -143,10 +137,11 @@ def load_model():
         f"TorchScript exists: {torchscript_path.exists()} (size: {torchscript_path.stat().st_size if torchscript_path.exists() else 0}B)\n"
         f"Checkpoint exists: {checkpoint_path.exists()} (size: {checkpoint_path.stat().st_size if checkpoint_path.exists() else 0}B)\n"
         f"\nTroubleshooting:\n"
-        f"1. If files show 0B or <500B, they may be git-lfs pointers\n"
-        f"2. In your repo, run: git lfs pull --include='checkpoints/*.pt'\n"
-        f"3. Or, remove git-lfs: git rm .gitattributes && git add checkpoints/ && git commit -m 'Remove git-lfs, use direct files'\n"
-        f"4. Rebuild Docker image locally to verify"
+        f"1. If files show <1MB, Google Drive download likely failed\n"
+        f"2. Check that Google Drive files are shared as 'Anyone with the link can view'\n"
+        f"3. Verify download file IDs in Dockerfile (gdown commands)\n"
+        f"4. Check Railway build logs for gdown download errors\n"
+        f"5. Rebuild Docker image to retry downloads"
     )
     logger.error(error_msg)
     raise RuntimeError(error_msg)
