@@ -11,7 +11,9 @@ services:
       - PORT=8000
       - PYTHONUNBUFFERED=1
     volumes:
-      - ./checkpoints:/app/checkpoints:ro
+      # IMPORTANT: Don't mount checkpoints as volume - let Docker use the image's git-lfs pulled files
+      # Volume mount would expose local git-lfs pointers (134B) instead of actual files
+      # The Dockerfile handles git lfs pull to get real files in the image
       - ./processed_data:/app/processed_data:ro
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
