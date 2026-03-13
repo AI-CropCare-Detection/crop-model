@@ -29,16 +29,20 @@ RUN pip install --user --no-cache-dir gdown
 RUN mkdir -p /app/checkpoints
 
 RUN /root/.local/bin/gdown "1EIwz1J-9bXUXrZGk35ef8159dAG-56JM" \
-    -O /app/checkpoints/yolov7_plant_disease.torchscript.pt
+    -O /app/checkpoints/yolov7_plant_disease.torchscript.pt \
+    --quiet 2>&1 || echo "[WARN] TorchScript gdown issue - checking file..."
 
 RUN /root/.local/bin/gdown "1RaLO5MrJ-8H_Q4XGEGY8TXRvfqXdUZd1" \
-    -O /app/checkpoints/best_model.pt
+    -O /app/checkpoints/best_model.pt \
+    --quiet 2>&1 || echo "[WARN] Checkpoint gdown issue - checking file..."
 
 RUN /root/.local/bin/gdown "1KmsorvSj6zEE1GAHEnRUCmxb9p6X4HiO" \
-    -O /app/checkpoints/model_meta.json
+    -O /app/checkpoints/model_meta.json \
+    --quiet 2>&1 || echo "[WARN] Metadata gdown issue - checking file..."
 
 RUN /root/.local/bin/gdown "1Fx2TXACx_IFXvPTiCR-Lw5qG-HLP9B9D" \
-    -O /app/checkpoints/yolov7_plant_disease.onnx
+    -O /app/checkpoints/yolov7_plant_disease.onnx \
+    --quiet 2>&1 || echo "[WARN] ONNX gdown issue - checking file..."
 
 # Verify downloads succeeded
 RUN echo "[CHECK] Downloaded model files:" && \
