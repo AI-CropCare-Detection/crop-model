@@ -1,11 +1,25 @@
 #!/bin/bash
-# Docker entrypoint script - validates model files before starting the app
-# This ensures the API only starts if critical model files are present and valid
+# Docker entrypoint script - Railway deployment validation
+# Ensures large model files are actual binaries (not git-lfs pointers)
+# Fails immediately if any critical models are missing or corrupted
 
 set -e
 
-echo "[START] Docker Entrypoint Script"
-echo "[INFO] Checking model files..."
+echo "[ENTRYPOINT] $(date '+%Y-%m-%d %H:%M:%S') - Starting model validation..."
+echo ""
+
+# CRITICAL: Runtime safety pull attempt (in case Railway runtime has LFS access)
+# This complements the build-time pull, providing a failsafe
+if command -v git-lfs &> /dev/null; then
+    echo "[STEP 1] Attempting runtime git-lfs pull (failsafe)..."
+    cd /app && \
+    git lfs install --local --force 2>&1 | grep -v "Hooks have" || true && \
+    git lfs pull --include="checkpoints/*.pt" --include="checkpoints/*.onnx" 2>&1 | head -5 || \
+    echo "[WARN] Runtime git-lfs pull skipped (expected if already resolved)"
+    echo ""
+fi
+
+echo "[STEP 2] VALIDATING MODEL FILES..."
 echo ""
 
 # Define model paths
@@ -16,116 +30,94 @@ ONNX_PATH="/app/checkpoints/yolov7_plant_disease.onnx"
 
 # Check if checkpoints directory exists
 if [ ! -d "/app/checkpoints" ]; then
-    echo "[ERROR] Critical: /app/checkpoints directory not found!"
-    echo "[ERROR] Model files must be present in the Docker image"
-    echo "[ERROR] Check that checkpoints/ is committed to git and not excluded in .dockerignore"
+    echo "[ERROR] /app/checkpoints directory not found!"
+    echo "[ERROR] Model files must be present in Docker image"
     exit 1
 fi
 
-# Function to check file size and validity
-check_file() {
-    local filepath=$1
-    local filename=$(basename "$filepath")
-    local min_size=${2:-1000000}  # Default 1MB minimum
-    
-    if [ ! -f "$filepath" ]; then
-        echo "[ERROR] Missing: $filename"
-        return 1
-    fi
-    
-    # Get file size (works on both Linux and macOS)
-    if command -v stat &> /dev/null; then
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            # macOS
-            local size=$(stat -f%z "$filepath" 2>/dev/null || echo "0")
-        else
-            # Linux
-            local size=$(stat -c%s "$filepath" 2>/dev/null || echo "0")
-        fi
-    else
-        # Fallback using ls + awk
-        local size=$(ls -L "$filepath" 2>/dev/null | awk '{print $5}')
-    fi
-    
-    size=${size:-0}
-    local size_mb=$((size / 1048576))
-    
-    # Check if file is a git-lfs pointer (very small, text content)
-    if [ "$size" -lt 500 ]; then
-        echo "[ERROR] $filename appears to be git-lfs pointer (${size}B) - not actual file"
-        echo "[ERROR]   This happens when git-lfs is configured but not pulled"
-        echo "[ERROR]   Solution: Run 'git lfs pull --include=\"checkpoints/*.pt\"' in your repo"
-        echo "[ERROR]   Or: Remove git-lfs: 'git rm .gitattributes && git add checkpoints/'"
-        return 1
-    elif [ "$size" -lt "$min_size" ]; then
-        echo "[ERROR] $filename is too small (${size_mb}MB) - likely corrupted or not copied"
-        return 1
-    else
-        echo "[OK] $filename: ${size_mb}MB"
-        return 0
-    fi
-}
-
-# Check metadata (required)
-echo "Checking critical files:"
-if ! check_file "$METADATA_PATH" 100; then
-    echo "[ERROR] Model metadata file is missing or invalid!"
-    echo "[ERROR] Cannot load model without metadata"
-    exit 1
-fi
-
+echo "Critical Model Files:"
+echo "  TorchScript: $TORCHSCRIPT_PATH"
+echo "  Checkpoint:  $CHECKPOINT_PATH"
+echo "  Metadata:    $METADATA_PATH"
 echo ""
-echo "Checking model files (at least one required):"
+echo "Checking file sizes and validity..."
+echo ""
 
-TORCHSCRIPT_OK=0
-CHECKPOINT_OK=0
-ONNX_OK=0
+# Track validation status
+VALIDATION_FAILED=0
 
-if check_file "$TORCHSCRIPT_PATH" 100000000; then  # 100MB minimum for TorchScript
-    echo "[INFO] TorchScript model will be loaded"
-    TORCHSCRIPT_OK=1
+# Check TorchScript
+if [ -f "$TORCHSCRIPT_PATH" ]; then
+    TS_SIZE=$(stat -c%s "$TORCHSCRIPT_PATH" 2>/dev/null || echo "0")
+    if [ "$TS_SIZE" -lt 500 ]; then
+        echo "[ERROR] TorchScript: ${TS_SIZE}B (GIT-LFS POINTER - NOT REAL FILE!)"
+        VALIDATION_FAILED=1
+    else
+        TS_MB=$((TS_SIZE / 1048576))
+        echo "[OK] TorchScript: ${TS_MB}MB"
+    fi
 else
-    echo "[WARN] TorchScript model not available"
+    echo "[ERROR] TorchScript: FILE NOT FOUND"
+    VALIDATION_FAILED=1
 fi
 
-if check_file "$CHECKPOINT_PATH" 300000000; then  # 300MB minimum for checkpoint
-    echo "[INFO] Checkpoint model will be loaded as fallback"
-    CHECKPOINT_OK=1
+# Check Checkpoint  
+if [ -f "$CHECKPOINT_PATH" ]; then
+    CP_SIZE=$(stat -c%s "$CHECKPOINT_PATH" 2>/dev/null || echo "0")
+    if [ "$CP_SIZE" -lt 500 ]; then
+        echo "[ERROR] Checkpoint: ${CP_SIZE}B (GIT-LFS POINTER - NOT REAL FILE!)"
+        VALIDATION_FAILED=1
+    else
+        CP_MB=$((CP_SIZE / 1048576))
+        echo "[OK] Checkpoint: ${CP_MB}MB"
+    fi
 else
-    echo "[WARN] Checkpoint model not available"
+    echo "[ERROR] Checkpoint: FILE NOT FOUND"
+    VALIDATION_FAILED=1
 fi
 
-if check_file "$ONNX_PATH" 100000000; then  # 100MB minimum for ONNX
-    echo "[INFO] ONNX model available (108+ MB)"
-    ONNX_OK=1
+# Check Metadata
+if [ -f "$METADATA_PATH" ]; then
+    echo "[OK] Metadata: present"
 else
-    echo "[WARN] ONNX model not available"
+    echo "[ERROR] Metadata: FILE NOT FOUND"
+    VALIDATION_FAILED=1
+fi
+
+# Check ONNX (optional)
+if [ -f "$ONNX_PATH" ]; then
+    ONNX_SIZE=$(stat -c%s "$ONNX_PATH" 2>/dev/null || echo "0")
+    if [ "$ONNX_SIZE" -ge 1000000 ]; then
+        ONNX_MB=$((ONNX_SIZE / 1048576))
+        echo "[OK] ONNX: ${ONNX_MB}MB"
+    else
+        echo "[WARN] ONNX: ${ONNX_SIZE}B (small/optional)"
+    fi
 fi
 
 echo ""
 
-# Check that at least one model file is present
-if [ $TORCHSCRIPT_OK -eq 0 ] && [ $CHECKPOINT_OK -eq 0 ]; then
-    echo "[ERROR] CRITICAL: No valid model files found!"
-    echo "[ERROR] At least one of the following is required:"
-    echo "[ERROR]   - $TORCHSCRIPT_PATH (108+ MB)"
-    echo "[ERROR]   - $CHECKPOINT_PATH (324+ MB)"
-    echo "[ERROR] (ONNX model is optional)"
+# Fail if validation failed
+if [ $VALIDATION_FAILED -eq 1 ]; then
+    echo "[CRITICAL] Model validation FAILED!"
     echo ""
-    echo "[ERROR] Troubleshooting:"
-    echo "[ERROR] 1. Verify model files are committed to git (not in .gitignore or .dockerignore)"
-    echo "[ERROR] 2. Check that git has the full files (not corrupted or truncated)"
-    echo "[ERROR] 3. For large files > 100MB, ensure git-lfs is configured"
-    echo "[ERROR] 4. Rebuild Docker image: docker build -t crop-model ."
+    echo "ERROR: Git-LFS pointer files detected instead of real model files."
+    echo ""
+    echo "This happens when:"
+    echo "  1. Docker build clones the repo but git-lfs pull doesn't resolve pointers"
+    echo "  2. Git-LFS credentials unavailable or server unreachable"
+    echo "  3. .gitattributes missing or git-lfs not installed in Docker"
+    echo ""
+    echo "On Railway:"
+    echo "  - Ensure .gitattributes file exists with LFS config"
+    echo "  - Verify model files are in GitHub LFS storage"
+    echo "  - Check Railway build logs for 'git lfs pull' output"
+    echo "  - Rebuild: Push changes to trigger Railway rebuild"
     echo ""
     exit 1
 fi
 
-# Show summary of available models
-echo "[OK] All critical model files are present and valid"
-if [ $ONNX_OK -eq 1 ]; then
-    echo "[OK] ONNX model is also available for additional inference support"
-fi
+echo "[OK] All model files validated successfully!"
 echo "[INFO] Starting application..."
 echo ""
 

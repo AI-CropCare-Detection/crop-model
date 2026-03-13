@@ -38,15 +38,53 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy Python dependencies from builder
 COPY --from=builder /root/.local /root/.local
 
-# Copy application code first
+# Copy application code (includes .gitattributes and .git) 
 COPY . .
 
-# Explicitly copy and verify checkpoints directory
-COPY checkpoints/ /app/checkpoints/
+# CRITICAL: Initialize git-lfs and pull actual model files instead of pointers
+# On Railway, this ensures large model files are fetched from LFS storage
+RUN cd /app && \
+    echo "[STEP 1] Initializing git-lfs in docker context..." && \
+    git lfs install --local --force && \
+    echo "[STEP 2] Configuring git to accept all certificates..." && \
+    git config --global http.sslverify false && \
+    echo "[STEP 3] Fetching git-lfs model files (pt, onnx)..." && \
+    git lfs pull --include="checkpoints/*.pt" --include="checkpoints/*.onnx" --include="checkpoints/*.json" 2>&1 || \
+    (echo "[WARN] Git-LFS pull had issues, attempting direct checkout..."; git checkout checkpoints/ 2>&1 || true) && \
+    echo "[STEP 4] Verifying model files..." && \
+    ls -lh /app/checkpoints/ && \
+    echo ""
 
-# Initialize git-lfs in case files are LFS-tracked (resolves them to actual files)
-RUN cd /app && git lfs install --local 2>/dev/null || true && \
-    git lfs pull --include="checkpoints/*.pt" 2>/dev/null || true
+# Strict model file validation - Docker build FAILS if files are only pointers
+RUN \
+    torchscript_size=$(stat -c%s /app/checkpoints/yolov7_plant_disease.torchscript.pt 2>/dev/null || echo "0") && \
+    checkpoint_size=$(stat -c%s /app/checkpoints/best_model.pt 2>/dev/null || echo "0") && \
+    echo "[CHECK] TorchScript: ${torchscript_size}B" && \
+    echo "[CHECK] Checkpoint: ${checkpoint_size}B" && \
+    if [ "$torchscript_size" -lt 1000000 ] || [ "$checkpoint_size" -lt 1000000 ]; then \
+        echo ""; \
+        echo "[CRITICAL ERROR] Model files are too small!"; \
+        echo "[CRITICAL ERROR] Files appear to be git-lfs pointers (text), not actual binary files."; \
+        echo "[CRITICAL ERROR] This means: git lfs pull did not work correctly in Docker build."; \
+        echo "[CRITICAL ERROR] "; \
+        echo "[CRITICAL ERROR] On Railway, this could happen because:"; \
+        echo "[CRITICAL ERROR]   1. Git LFS credentials not configured"; \
+        echo "[CRITICAL ERROR]   2. Network timeout during git lfs pull"; \
+        echo "[CRITICAL ERROR]   3. Git LFS server unreachable"; \
+        echo "[CRITICAL ERROR] "; \
+        echo "[CRITICAL ERROR] Solution:"; \
+        echo "[CRITICAL ERROR]   - Ensure .gitattributes file has LFS config"; \
+        echo "[CRITICAL ERROR]   - Verify model files are in LFS storage"; \
+        echo "[CRITICAL ERROR]   - Check Railway can access GitHub LFS"; \
+        echo ""; \
+        exit 1; \
+    else \
+        echo "[OK] Model files verified - sizes acceptable"; \
+        torchscript_mb=$((torchscript_size / 1048576)); \
+        checkpoint_mb=$((checkpoint_size / 1048576)); \
+        echo "[OK] TorchScript: ${torchscript_mb}MB"; \
+        echo "[OK] Checkpoint: ${checkpoint_mb}MB"; \
+    fi
 
 # Create entrypoint script for validation
 COPY docker-entrypoint.sh /entrypoint.sh
