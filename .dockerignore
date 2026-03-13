@@ -33,7 +33,7 @@ Thumbs.db
 *.md
 docs/
 
-# Jupyter (keep only notebooks if using)
+# Jupyter
 .ipynb_checkpoints
 
 # CI/CD
@@ -44,3 +44,6 @@ docs/
 # Other
 .env
 .env.local
+
+# NOTE: checkpoints/ directory is EXPLICITLY INCLUDED in the Dockerfile
+# Do NOT exclude it - the COPY checkpoints/ command handles it
