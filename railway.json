@@ -3,7 +3,7 @@
     "builder": "dockerfile"
   },
   "deploy": {
-    "startCommand": "uvicorn main:app --host 0.0.0.0 --port $PORT --workers 4",
+    "startCommand": "/bin/bash -c 'uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 4'",
     "restartPolicyMaxRetries": 5
   },
   "environment": {
