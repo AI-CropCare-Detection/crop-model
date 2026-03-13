@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv
+
+# IDEs
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+docs/
+
+# Jupyter (keep only notebooks if using)
+.ipynb_checkpoints
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+
+# Other
+.env
+.env.local
