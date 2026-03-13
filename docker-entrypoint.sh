@@ -12,6 +12,7 @@ echo ""
 TORCHSCRIPT_PATH="/app/checkpoints/yolov7_plant_disease.torchscript.pt"
 CHECKPOINT_PATH="/app/checkpoints/best_model.pt"
 METADATA_PATH="/app/checkpoints/model_meta.json"
+ONNX_PATH="/app/checkpoints/yolov7_plant_disease.onnx"
 
 # Check if checkpoints directory exists
 if [ ! -d "/app/checkpoints" ]; then
@@ -78,6 +79,7 @@ echo "Checking model files (at least one required):"
 
 TORCHSCRIPT_OK=0
 CHECKPOINT_OK=0
+ONNX_OK=0
 
 if check_file "$TORCHSCRIPT_PATH" 100000000; then  # 100MB minimum for TorchScript
     echo "[INFO] TorchScript model will be loaded"
@@ -93,6 +95,13 @@ else
     echo "[WARN] Checkpoint model not available"
 fi
 
+if check_file "$ONNX_PATH" 100000000; then  # 100MB minimum for ONNX
+    echo "[INFO] ONNX model available (108+ MB)"
+    ONNX_OK=1
+else
+    echo "[WARN] ONNX model not available"
+fi
+
 echo ""
 
 # Check that at least one model file is present
@@ -101,6 +110,7 @@ if [ $TORCHSCRIPT_OK -eq 0 ] && [ $CHECKPOINT_OK -eq 0 ]; then
     echo "[ERROR] At least one of the following is required:"
     echo "[ERROR]   - $TORCHSCRIPT_PATH (108+ MB)"
     echo "[ERROR]   - $CHECKPOINT_PATH (324+ MB)"
+    echo "[ERROR] (ONNX model is optional)"
     echo ""
     echo "[ERROR] Troubleshooting:"
     echo "[ERROR] 1. Verify model files are committed to git (not in .gitignore or .dockerignore)"
@@ -111,7 +121,11 @@ if [ $TORCHSCRIPT_OK -eq 0 ] && [ $CHECKPOINT_OK -eq 0 ]; then
     exit 1
 fi
 
+# Show summary of available models
 echo "[OK] All critical model files are present and valid"
+if [ $ONNX_OK -eq 1 ]; then
+    echo "[OK] ONNX model is also available for additional inference support"
+fi
 echo "[INFO] Starting application..."
 echo ""
 
