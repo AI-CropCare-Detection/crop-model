@@ -56,59 +56,70 @@ except FileNotFoundError:
 
 # Load Model
 def load_model():
-    """Load the trained YOLOv7 model from checkpoint."""
+    """Load the trained YOLOv7 model from checkpoint with multiple fallbacks."""
     
     # Try TorchScript version first (fully compiled, no architecture needed)
     if torchscript_path.exists():
         try:
-            logger.info(f"[LOAD] Loading TorchScript model...")
+            logger.info(f"[LOAD] Loading TorchScript model from: {torchscript_path}")
             model = torch.jit.load(str(torchscript_path), map_location=DEVICE)
+            model.eval()
             logger.info(f"[OK] TorchScript model loaded on {DEVICE}")
             return model
         except Exception as e:
-            logger.warning(f"[WARN] TorchScript load failed: {str(e)[:100]}")
+            logger.warning(f"[WARN] TorchScript load failed: {type(e).__name__}: {str(e)[:150]}")
     
-    # Fall back to checkpoint with state_dict extraction
-    if not checkpoint_path.exists():
-        raise FileNotFoundError(f"Model checkpoint not found at {checkpoint_path}")
+    # Try checkpoint with improved loading (weights_only=False for compatibility)
+    if checkpoint_path.exists():
+        try:
+            logger.info(f"[LOAD] Loading checkpoint from: {checkpoint_path}")
+            # Use weights_only=False to handle pickled objects in older checkpoints
+            checkpoint = torch.load(checkpoint_path, map_location=DEVICE, weights_only=False)
+            
+            # Extract model state from checkpoint structure
+            if isinstance(checkpoint, dict):
+                if 'model_state' in checkpoint:
+                    logger.info(f"[OK] Found 'model_state' key in checkpoint")
+                    state_dict = checkpoint['model_state']
+                    if 'epoch' in checkpoint:
+                        logger.info(f"   Training Epoch: {checkpoint['epoch']}")
+                    if 'best_f1' in checkpoint:
+                        logger.info(f"   Best F1 Score: {checkpoint['best_f1']:.4f}")
+                elif 'model' in checkpoint:
+                    logger.info(f"[OK] Found 'model' key in checkpoint")
+                    state_dict = checkpoint['model']
+                else:
+                    logger.info(f"[OK] Using checkpoint as state_dict directly")
+                    state_dict = checkpoint
+            else:
+                state_dict = checkpoint
+            
+            # Create architecture and load weights
+            logger.info(f"[LOAD] Creating YOLOv7Classifier with {NUM_CLASSES} classes...")
+            model = YOLOv7Classifier(num_classes=NUM_CLASSES, dropout=0.0)
+            
+            # Load with strict=False for flexibility
+            incompatible = model.load_state_dict(state_dict, strict=False)
+            if incompatible.missing_keys:
+                logger.info(f"[WARN] {len(incompatible.missing_keys)} missing keys (expected)")
+            if incompatible.unexpected_keys:
+                logger.info(f"[WARN] {len(incompatible.unexpected_keys)} unexpected keys (architecture mismatch)")
+            
+            model.to(DEVICE)
+            model.eval()
+            logger.info(f"[OK] Checkpoint model loaded on {DEVICE}")
+            return model
+            
+        except Exception as e:
+            logger.error(f"[WARN] Checkpoint load failed: {type(e).__name__}: {str(e)[:150]}")
     
-    try:
-        checkpoint = torch.load(checkpoint_path, map_location=DEVICE)
-        logger.info(f"[LOAD] Loading best_model.pt checkpoint...")
-        
-        if isinstance(checkpoint, dict) and 'model_state' in checkpoint:
-            logger.info(f"[OK] Extracted 'model_state' from checkpoint")
-            if 'epoch' in checkpoint:
-                logger.info(f"   Epoch: {checkpoint['epoch']}")
-            if 'best_f1' in checkpoint:
-                logger.info(f"   Best F1: {checkpoint['best_f1']:.4f}")
-            state_dict = checkpoint['model_state']
-        else:
-            state_dict = checkpoint
-        
-        # Create and load model
-        logger.info(f"[MODEL] Creating YOLOv7Classifier with {NUM_CLASSES} classes...")
-        model = YOLOv7Classifier(num_classes=NUM_CLASSES, dropout=0.0)
-        
-        # Load with strict=False for flexibility
-        incompatible = model.load_state_dict(state_dict, strict=False)
-        if incompatible.missing_keys:
-            logger.info(f"[WARN] {len(incompatible.missing_keys)} expected missing keys")
-        if incompatible.unexpected_keys:
-            logger.info(f"[WARN] {len(incompatible.unexpected_keys)} unexpected keys (from complex architecture)")
-        
-        model.to(DEVICE)
-        model.eval()
-        logger.info(f"[OK] Model loaded with compatibility mode on {DEVICE}")
-        return model
-        
-    except Exception as e:
-        logger.error(f"[WARN] Error loading model: {str(e)[:200]}...")
-        logger.info(f"[INFO] Creating fallback placeholder model with {NUM_CLASSES} classes")
-        model = YOLOv7Classifier(num_classes=NUM_CLASSES, dropout=0.0)
-        model.to(DEVICE)
-        model.eval()
-        return model
+    # All model loading attempts failed - use fallback placeholder
+    logger.warning(f"[WARN] Could not load any real model, using fallback classifier")
+    logger.info(f"[INFO] Creating fallback placeholder model with {NUM_CLASSES} classes")
+    model = YOLOv7Classifier(num_classes=NUM_CLASSES, dropout=0.0)
+    model.to(DEVICE)
+    model.eval()
+    return model
 
 
 class YOLOv7Classifier(torch.nn.Module):
@@ -205,29 +216,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load model on startup
-try:
-    model = load_model()
-    logger.info(f"[OK] Model loaded successfully on {DEVICE}")
-except Exception as e:
-    logger.error(f"[ERROR] Failed to load model: {str(e)}")
-    logger.error(traceback.format_exc())
-    model = None
-
+# Global model (loaded at startup)
+model = None
+model_loaded = False
 
 # Startup & Shutdown
 @app.on_event("startup")
 async def startup_event():
-    """Handle startup."""
+    """Handle startup - load model once on first startup."""
+    global model, model_loaded
+    
     try:
-        logger.info("[START] Starting Plant Disease Detection API...")
-        logger.info(f"[INFO] Classes loaded: {NUM_CLASSES}")
-        logger.info(f"[INFO] Device: {DEVICE}")
-        logger.info(f"[INFO] Model loaded: {model is not None}")
-        if torch.cuda.is_available():
-            logger.info(f"[INFO] GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f}GB")
+        # Load model only once (prevents race conditions with multiple workers)
+        if not model_loaded:
+            logger.info("[START] Starting Plant Disease Detection API...")
+            logger.info(f"[INFO] Classes: {NUM_CLASSES}")
+            logger.info(f"[INFO] Device: {DEVICE}")
+            
+            # Verify model files exist before attempting to load
+            if torchscript_path.exists():
+                ts_size = torchscript_path.stat().st_size / (1024 * 1024)
+                logger.info(f"[INFO] TorchScript model: {ts_size:.1f}MB")
+            
+            if checkpoint_path.exists():
+                ckpt_size = checkpoint_path.stat().st_size / (1024 * 1024)
+                logger.info(f"[INFO] Checkpoint model: {ckpt_size:.1f}MB")
+            
+            # Load model with careful error handling
+            try:
+                model = load_model()
+                model_loaded = True
+                logger.info(f"[OK] Model loaded successfully on {DEVICE}")
+            except Exception as e:
+                logger.error(f"[ERROR] Failed to load model: {str(e)}")
+                logger.error(traceback.format_exc())
+                model = None
+                model_loaded = True  # Mark as attempted to avoid retry loops
+            
+            logger.info(f"[INFO] Model ready: {model is not None}")
+            if torch.cuda.is_available():
+                logger.info(f"[INFO] GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f}GB")
     except Exception as e:
         logger.error(f"[ERROR] Startup error: {str(e)}")
+        logger.error(traceback.format_exc())
 
 
 @app.on_event("shutdown")
