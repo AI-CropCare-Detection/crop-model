@@ -25,12 +25,14 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies including git and git-lfs (in case files are LFS-tracked)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libopencv-core-dev \
     libsm6 \
     libxext6 \
     curl \
+    git \
+    git-lfs \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python dependencies from builder
@@ -41,6 +43,10 @@ COPY . .
 
 # Explicitly copy and verify checkpoints directory
 COPY checkpoints/ /app/checkpoints/
+
+# Initialize git-lfs in case files are LFS-tracked (resolves them to actual files)
+RUN cd /app && git lfs install --local 2>/dev/null || true && \
+    git lfs pull --include="checkpoints/*.pt" 2>/dev/null || true
 
 # Create entrypoint script for validation
 COPY docker-entrypoint.sh /entrypoint.sh
@@ -59,7 +65,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Use entrypoint script to validate models before starting
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 
 # Run with uvicorn (use environment variable for port, defaulting to 8000)
 CMD ["bash", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 4"]

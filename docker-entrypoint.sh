@@ -49,7 +49,14 @@ check_file() {
     size=${size:-0}
     local size_mb=$((size / 1048576))
     
-    if [ "$size" -lt "$min_size" ]; then
+    # Check if file is a git-lfs pointer (very small, text content)
+    if [ "$size" -lt 500 ]; then
+        echo "[ERROR] $filename appears to be git-lfs pointer (${size}B) - not actual file"
+        echo "[ERROR]   This happens when git-lfs is configured but not pulled"
+        echo "[ERROR]   Solution: Run 'git lfs pull --include=\"checkpoints/*.pt\"' in your repo"
+        echo "[ERROR]   Or: Remove git-lfs: 'git rm .gitattributes && git add checkpoints/'"
+        return 1
+    elif [ "$size" -lt "$min_size" ]; then
         echo "[ERROR] $filename is too small (${size_mb}MB) - likely corrupted or not copied"
         return 1
     else
