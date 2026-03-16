@@ -6,7 +6,7 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # ─────────────────────────────────────────────
-# System Dependencies (including git + git-lfs)
+# System Dependencies (Git + LFS)
 # ─────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Initialize git-lfs
+# Enable Git LFS
 RUN git lfs install
 
 # ─────────────────────────────────────────────
@@ -43,14 +43,20 @@ RUN pip install --no-cache-dir --default-timeout=10000 -r requirements.txt
 # ─────────────────────────────────────────────
 COPY . .
 
-# Pull actual files from Git LFS
-RUN git lfs pull
+# ─────────────────────────────────────────────
+# Pull Large Files ONLY if Git Repository Exists
+# ─────────────────────────────────────────────
+RUN if [ -d .git ]; then \
+        git lfs pull; \
+    else \
+        echo "No .git directory found — skipping git lfs pull"; \
+    fi
 
-# Ensure checkpoints folder exists
+# ─────────────────────────────────────────────
+# Ensure Checkpoints Folder Exists
+# (Will work with Railway Volume if mounted)
+# ─────────────────────────────────────────────
 RUN mkdir -p /app/checkpoints
-
-# Optional: verify model size during build
-RUN ls -lh /app/checkpoints
 
 # ─────────────────────────────────────────────
 # Environment Variables
@@ -64,5 +70,4 @@ ENV PYTHONUNBUFFERED=1 \
 # ─────────────────────────────────────────────
 EXPOSE 8000
 
-# Start application using Railway PORT
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
