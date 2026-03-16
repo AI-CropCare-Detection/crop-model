@@ -6,21 +6,17 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # ─────────────────────────────────────────────
-# System Dependencies (Git + LFS)
+# System Dependencies
 # ─────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
-    git-lfs \
     libopencv-dev \
     libopencv-core-dev \
     libsm6 \
     libxext6 \
     curl \
     && rm -rf /var/lib/apt/lists/*
-
-# Enable Git LFS
-RUN git lfs install
 
 # ─────────────────────────────────────────────
 # Install Python Dependencies
@@ -38,25 +34,43 @@ RUN pip install --no-cache-dir \
 
 RUN pip install --no-cache-dir --default-timeout=10000 -r requirements.txt
 
+# Install gdown for Google Drive downloads
+RUN pip install --no-cache-dir gdown
+
 # ─────────────────────────────────────────────
 # Copy Project Files
 # ─────────────────────────────────────────────
 COPY . .
 
 # ─────────────────────────────────────────────
-# Pull Large Files ONLY if Git Repository Exists
-# ─────────────────────────────────────────────
-RUN if [ -d .git ]; then \
-        git lfs pull; \
-    else \
-        echo "No .git directory found — skipping git lfs pull"; \
-    fi
-
-# ─────────────────────────────────────────────
 # Ensure Checkpoints Folder Exists
-# (Will work with Railway Volume if mounted)
 # ─────────────────────────────────────────────
 RUN mkdir -p /app/checkpoints
+
+# ─────────────────────────────────────────────
+# Download Model Files from Google Drive
+# ─────────────────────────────────────────────
+
+# best_model.pt
+RUN gdown --fuzzy "https://drive.google.com/file/d/1RaLO5MrJ-8H_Q4XGEGY8TXRvfqXdUZd1/view?usp=drive_link" \
+    -O /app/checkpoints/best_model.pt
+
+# model_meta.json
+RUN gdown --fuzzy "https://drive.google.com/file/d/1KmsorvSj6zEE1GAHEnRUCmxb9p6X4HiO/view?usp=drive_link" \
+    -O /app/checkpoints/model_meta.json
+
+# yolov7.onnx
+RUN gdown --fuzzy "https://drive.google.com/file/d/1Fx2TXACx_IFXvPTiCR-Lw5qG-HLP9B9D/view?usp=drive_link" \
+    -O /app/checkpoints/yolov7.onnx
+
+# yolov7_plant_disease.torchscript.pt
+RUN gdown --fuzzy "https://drive.google.com/file/d/1EIwz1J-9bXUXrZGk35ef8159dAG-56JM/view?usp=drive_link" \
+    -O /app/checkpoints/yolov7_plant_disease.torchscript.pt
+
+# ─────────────────────────────────────────────
+# Verify All Downloads Succeeded
+# ─────────────────────────────────────────────
+RUN python -c "import os; files = {'/app/checkpoints/best_model.pt': 1000000, '/app/checkpoints/model_meta.json': 100, '/app/checkpoints/yolov7.onnx': 1000000, '/app/checkpoints/yolov7_plant_disease.torchscript.pt': 1000000}; errors = [f'{p}: {os.path.getsize(p)} bytes' for p, m in files.items() if os.path.getsize(p) < m]; [print('OK: ' + p) for p in files]; assert not errors, 'Download failed: ' + str(errors)"
 
 # ─────────────────────────────────────────────
 # Environment Variables
