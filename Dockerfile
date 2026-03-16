@@ -5,19 +5,22 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-ENV TORCH_HOME=/app/.cache
-
 # ─────────────────────────────────────────────
-# System Dependencies
+# System Dependencies (including git + git-lfs)
 # ─────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    git \
+    git-lfs \
     libopencv-dev \
     libopencv-core-dev \
     libsm6 \
     libxext6 \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Initialize git-lfs
+RUN git lfs install
 
 # ─────────────────────────────────────────────
 # Install Python Dependencies
@@ -28,39 +31,36 @@ RUN pip install --no-cache-dir --upgrade pip
 
 # Install PyTorch CPU
 RUN pip install --no-cache-dir \
-    torch==2.1.1 torchvision==0.16.1 torchaudio==2.1.1 \
+    torch==2.1.1 torchvision==0.16.1 torchaudio==0.4.2 \
     --index-url https://download.pytorch.org/whl/cpu
 
 RUN pip install --no-cache-dir --default-timeout=10000 -r requirements.txt
 
 # ─────────────────────────────────────────────
-# Copy Application Code
+# Copy Project Files
 # ─────────────────────────────────────────────
 COPY . .
 
-# ─────────────────────────────────────────────
-# IMPORTANT:
-# Copy your model files directly into the project folder:
-# checkpoints/
-#     yolov7_plant_disease.torchscript.pt
-#     best_model.pt
-#     model_meta.json
-#     yolov7_plant_disease.onnx
-# ─────────────────────────────────────────────
-COPY checkpoints /app/checkpoints
+# Pull actual files from Git LFS
+RUN git lfs pull
+
+# Ensure checkpoints folder exists
+RUN mkdir -p /app/checkpoints
+
+# Optional: verify model size during build
+RUN ls -lh /app/checkpoints
 
 # ─────────────────────────────────────────────
 # Environment Variables
 # ─────────────────────────────────────────────
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    TORCH_HOME=/app/.cache
 
 # ─────────────────────────────────────────────
-# Expose Port (Railway uses $PORT)
+# Railway Port Configuration
 # ─────────────────────────────────────────────
 EXPOSE 8000
 
-# ─────────────────────────────────────────────
-# Start Application
-# ─────────────────────────────────────────────
+# Start application using Railway PORT
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
