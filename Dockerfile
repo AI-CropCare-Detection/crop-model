@@ -31,7 +31,9 @@ RUN pip install --no-cache-dir --upgrade pip
 
 # Install PyTorch CPU
 RUN pip install --no-cache-dir \
-    torch==2.1.1 torchvision==0.16.1 torchaudio==0.4.2 \
+    torch==2.1.1 \
+    torchvision==0.16.1 \
+    torchaudio==2.1.1 \
     --index-url https://download.pytorch.org/whl/cpu
 
 RUN pip install --no-cache-dir --default-timeout=10000 -r requirements.txt
